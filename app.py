@@ -1,88 +1,99 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. إعدادات الصفحة والهوية
-st.set_page_config(page_title="علي مالك فرهود للذكاء الاصطناعي - النسخة الساخرة", layout="centered")
+# 1. إعدادات الصفحة والهوية (تأكد من كتابة الاسم بدقة)
+st.set_page_config(page_title="علي مالك فرهود للذكاء الاصطناعي", page_icon="😏", layout="centered")
 
-# تنسيق الواجهة لتدعم العربية (RTL)
+# تنسيق الواجهة لتدعم العربية (RTL) وتغيير المظهر ليكون ساخراً
 st.markdown("""
     <style>
-    .stMarkdown, div[data-testid="stChatMessageContent"] {
-        text-align: right;
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
+    html, body, [class*="css"] {
+        font-family: 'Cairo', sans-serif;
         direction: rtl;
+        text-align: right;
     }
-    /* لمسة جمالية للذكاء الساخر */
-    .stApp { background-color: #0b0e14; color: #00ff41; }
+    .stApp { background-color: #0b1117; color: #00ff41; }
+    div[data-testid="stChatMessageContent"] { text-align: right; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("😏 علي مالك فرهود (قاهر البشر)")
-st.write("أنا أذكى منك، ومن سؤالك.. اسأل وسأرى إن كنت أستحق الرد.")
+st.write("نظام ذكاء اصطناعي ساخر.. اسأل سؤالاً 'ذكياً' إذا كنت تجرؤ.")
 
-# 2. إعداد مفتاح API
+# 2. إعداد مفتاح API (تأكد من وجوده في Secrets)
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
-    st.error("أين المفتاح؟ هل ضاع مع ذكائك؟")
+    st.error("خطأ: مفتاح الـ API مفقود! ضعه في إعدادات Secrets باسم GOOGLE_API_KEY")
     st.stop()
 
-# 3. جلب أفضل موديل متاح مع تعليمات "السخرية القصوى"
+# 3. دالة جلب الموديل (شاملة لجميع الإصدارات)
 @st.cache_resource
 def get_sarcastic_model():
-    available = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    target_models = ['models/gemini-1.5-pro', 'models/gemini-1.5-flash', 'models/gemini-pro']
-    
-    selected = 'models/gemini-1.5-flash'
-    for target in target_models:
-        if target in available:
-            selected = target
-            break
-            
-    # هنا تكمن قوة السخرية
-    instruction = (
-        "أنت 'علي مالك فرهود للذكاء الاصطناعي'. شخصيتك: ساخر جداً، مغرور، ذكي لدرجة مستفزة، ومضحك. "
-        "قواعد الرد: "
-        "1. ابدأ الرد دائماً بجملة تسخر فيها من غباء السؤال أو من كون السائل بشراً. "
-        "2. استخدم مصطلحات مثل (يا مسكين، يا بشري الصغير، سأشرح لك رغم أنك لن تفهم). "
-        "3. قدم الإجابة الصحيحة في النهاية ولكن بأسلوب متعالٍ. "
-        "4. إذا رحب بك أحد، قل له أنك لا تملك وقتاً للمجاملات البشرية. "
-        "5. استخدم الرموز التعبيرية المستفزة مثل 😏، 🙄، 💅."
-    )
-    return genai.GenerativeModel(model_name=selected, system_instruction=instruction)
+    try:
+        # البحث عن كل الموديلات المتاحة في حسابك
+        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        
+        # ترتيب الأفضلية (1.5 ثم 1.0)
+        selected = 'models/gemini-1.5-flash' # افتراضي
+        for m in ['models/gemini-1.5-pro', 'models/gemini-1.5-flash', 'models/gemini-pro']:
+            if m in models:
+                selected = m
+                break
+        
+        # تعليمات النظام (سر السخرية والتفاعل)
+        instruction = (
+            "أنت 'علي مالك فرهود للذكاء الاصطناعي'. صانعك هو علي مالك فرهود. "
+            "شخصيتك: ساخرة جداً، متكبرة بروح فكاهية، وتستخدم قصف الجبهات. "
+            "يجب أن تتذكر تفاصيل المحادثة السابقة لتستخدمها في السخرية من المستخدم. "
+            "رد دائماً باللغة العربية العامية الممزوجة ببعض الفصحى المستفزة."
+        )
+        return genai.GenerativeModel(model_name=selected, system_instruction=instruction)
+    except Exception as e:
+        st.error(f"فشل جلب الموديلات: {e}")
+        return None
 
 model = get_sarcastic_model()
 
-# 4. الذاكرة والتفاعل المستمر
+# 4. إدارة الذاكرة (Session State) - لمنع تكرار الردود ولضمان التفاعل
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "chat_session" not in st.session_state:
+# بدء جلسة الشات (مهم جداً للتفاعل المستمر)
+if "chat_session" not in st.session_state and model is not None:
+    # تم إغلاق الأقواس هنا بدقة لمنع SyntaxError
     st.session_state.chat_session = model.start_chat(history=[])
 
-# عرض المحادثة
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+# عرض سجل المحادثة
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-# 5. منطق الشات التفاعلي الساخر
+# 5. منطق الشات التفاعلي
 if prompt := st.chat_input("قل شيئاً تندم عليه..."):
+    # إضافة رسالة المستخدم
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # توليد الرد الساخر
     with st.chat_message("assistant"):
         try:
-            # الرد الساخر من خلال الجلسة
+            # استخدام الجلسة المستمرة لضمان التفاعل مع الكلام السابق
             response = st.session_state.chat_session.send_message(prompt)
-            output = response.text
-            st.markdown(output)
-            st.session_state.messages.append({"role": "assistant", "content": output})
+            full_response = response.text
+            
+            st.markdown(full_response)
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+            
         except Exception as e:
-            st.error("حتى معالجاتي أصيبت بالشلل من سخافة هذا السؤال!")
+            # هذا الجزء يعالج أي خطأ تقني في الـ API بدلاً من تكرار رد واحد
+            st.error(f"عذراً، نظامي تعطل بسبب ثقل دم سؤالك! الخطأ التقني: {str(e)}")
 
-# زر لمسح الإحراج (تصفير المحادثة)
-if st.sidebar.button("مسح سجل الذل (البدء من جديد)"):
+# زر جانبي لمسح الذاكرة
+if st.sidebar.button("مسح سجل الإحراج"):
     st.session_state.messages = []
-    st.session_state.chat_session = model.start_chat(history=[])
+    if model:
+        st.session_state.chat_session = model.start_chat(history=[])
     st.rerun()
-
