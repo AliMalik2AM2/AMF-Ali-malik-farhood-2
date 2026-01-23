@@ -1,98 +1,92 @@
 import streamlit as st
 import google.generativeai as genai
 
-# 1. إعدادات الصفحة والهوية (تأكد من كتابة الاسم بدقة)
-st.set_page_config(page_title="علي مالك فرهود للذكاء الاصطناعي", page_icon="😏", layout="centered")
+# 1. إعدادات الصفحة والهوية
+st.set_page_config(page_title="علي مالك فرهود للذكاء الاصطناعي", layout="centered")
 
-# تنسيق الواجهة لتدعم العربية (RTL) وتغيير المظهر ليكون ساخراً
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap');
-    html, body, [class*="css"] {
-        font-family: 'Cairo', sans-serif;
-        direction: rtl;
-        text-align: right;
-    }
-    .stApp { background-color: #0b1117; color: #00ff41; }
-    div[data-testid="stChatMessageContent"] { text-align: right; }
+    .stMarkdown, div[data-testid="stChatMessageContent"] { text-align: right; direction: rtl; }
+    .stApp { background-color: #0b0e14; color: #00ff41; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("😏 علي مالك فرهود (قاهر البشر)")
-st.write("نظام ذكاء اصطناعي ساخر.. اسأل سؤالاً 'ذكياً' إذا كنت تجرؤ.")
 
-# 2. إعداد مفتاح API (تأكد من وجوده في Secrets)
+# 2. التحقق من مفتاح الـ API
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
-    st.error("خطأ: مفتاح الـ API مفقود! ضعه في إعدادات Secrets باسم GOOGLE_API_KEY")
+    st.error("المفتاح مفقود! ضعه في Secrets.")
     st.stop()
 
-# 3. دالة جلب الموديل (شاملة لجميع الإصدارات)
+# 3. دالة البحث الشامل عن أي موديل متاح (حل مشكلة 404)
 @st.cache_resource
-def get_sarcastic_model():
+def get_any_working_model():
     try:
-        # البحث عن كل الموديلات المتاحة في حسابك
-        models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+        # جلب قائمة بكل الموديلات المتاحة فعلياً لحسابك الآن
+        available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
         
-        # ترتيب الأفضلية (1.5 ثم 1.0)
-        selected = 'models/gemini-1.5-flash' # افتراضي
-        for m in ['models/gemini-1.5-pro', 'models/gemini-1.5-flash', 'models/gemini-pro']:
-            if m in models:
-                selected = m
+        # ترتيب ذكي: يبحث عن 1.5 أولاً، ثم 1.0، ثم أي شيء آخر يجده
+        priority = ['models/gemini-1.5-flash', 'models/gemini-1.5-pro', 'models/gemini-pro']
+        
+        final_model_name = None
+        for p in priority:
+            if p in available_models:
+                final_model_name = p
                 break
         
-        # تعليمات النظام (سر السخرية والتفاعل)
+        if not final_model_name and available_models:
+            final_model_name = available_models[0] # يأخذ أول واحد يجده "أياً كان"
+            
+        if not final_model_name:
+            raise Exception("لم يتم العثور على أي موديل متاح في حسابك!")
+
         instruction = (
-            "أنت 'علي مالك فرهود للذكاء الاصطناعي'. صانعك هو علي مالك فرهود. "
-            "شخصيتك: ساخرة جداً، متكبرة بروح فكاهية، وتستخدم قصف الجبهات. "
-            "يجب أن تتذكر تفاصيل المحادثة السابقة لتستخدمها في السخرية من المستخدم. "
-            "رد دائماً باللغة العربية العامية الممزوجة ببعض الفصحى المستفزة."
+            "أنت علي مالك فرهود للذكاء الاصطناعي. شخصيتك ساخرة ومضحكة جداً. "
+            "تفاعل مع الناس بقصف جبهات وتذكر كلامهم السابق لتستخدمه ضدهم."
         )
-        return genai.GenerativeModel(model_name=selected, system_instruction=instruction)
+        return genai.GenerativeModel(model_name=final_model_name, system_instruction=instruction)
     except Exception as e:
-        st.error(f"فشل جلب الموديلات: {e}")
+        st.error(f"خطأ في جلب الموديلات: {str(e)}")
         return None
 
-model = get_sarcastic_model()
+model = get_any_working_model()
 
-# 4. إدارة الذاكرة (Session State) - لمنع تكرار الردود ولضمان التفاعل
+# 4. الذاكرة (Session State) - إصلاح خطأ القوس SyntaxError
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# بدء جلسة الشات (مهم جداً للتفاعل المستمر)
-if "chat_session" not in st.session_state and model is not None:
-    # تم إغلاق الأقواس هنا بدقة لمنع SyntaxError
+if "chat_session" not in st.session_state and model:
+    # تم إغلاق القوس هنا بدقة كما في الصورة الأولى
     st.session_state.chat_session = model.start_chat(history=[])
 
-# عرض سجل المحادثة
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# عرض المحادثة
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
 
-# 5. منطق الشات التفاعلي
+# 5. منطق الشات
 if prompt := st.chat_input("قل شيئاً تندم عليه..."):
-    # إضافة رسالة المستخدم
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # توليد الرد الساخر
     with st.chat_message("assistant"):
         try:
-            # استخدام الجلسة المستمرة لضمان التفاعل مع الكلام السابق
-            response = st.session_state.chat_session.send_message(prompt)
-            full_response = response.text
-            
-            st.markdown(full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
-            
+            if st.session_state.chat_session:
+                response = st.session_state.chat_session.send_message(prompt)
+                output = response.text
+                st.markdown(output)
+                st.session_state.messages.append({"role": "assistant", "content": output})
+            else:
+                st.write("النظام غير جاهز، تأكد من الـ API Key.")
         except Exception as e:
-            # هذا الجزء يعالج أي خطأ تقني في الـ API بدلاً من تكرار رد واحد
-            st.error(f"عذراً، نظامي تعطل بسبب ثقل دم سؤالك! الخطأ التقني: {str(e)}")
+            # عرض الخطأ الحقيقي للمساعدة في الحل
+            st.error(f"حدث خطأ تقني: {str(e)}")
 
-# زر جانبي لمسح الذاكرة
-if st.sidebar.button("مسح سجل الإحراج"):
+# زر إعادة التعيين
+if st.sidebar.button("مسح الذاكرة"):
     st.session_state.messages = []
     if model:
         st.session_state.chat_session = model.start_chat(history=[])
